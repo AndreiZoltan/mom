@@ -1,0 +1,18 @@
+fastapi>=0.110.0
+uvicorn[standard]>=0.28.0
+python-multipart>=0.0.9
+pydantic>=2.7.0
+python-dotenv>=1.0.0
+
+# NumPy: Stable 1.x branch for Python 3.12
+numpy>=1.26.4,<2.0.0
+
+# Audio & Whisper (CTranslate2 C++ backend)
+faster-whisper>=1.0.3
+
+# LLM Inference (llama.cpp C++ / CUDA backend)
+llama-cpp-python>=0.3.0
+
+# NVIDIA dynamic libraries for faster-whisper (CTranslate2)
+nvidia-cublas-cu12
+nvidia-cudnn-cu12
