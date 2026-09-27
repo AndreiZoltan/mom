@@ -1,6 +1,8 @@
 import asyncio
 import gc
 from app.config import MOCK_MODE, DEVICE, WHISPER_MODEL_PATH
+from app.schemas import MeetingType
+from app.prompts import *
 
 from pathlib import Path
 
@@ -44,24 +46,13 @@ def _sync_transcribe_audio(audio_path: str, meeting_type: str) -> dict:
         compute_type="int8_float16" if DEVICE == "cuda" else "int8",
     )
 
+    if meeting_type == MeetingType.MEDICAL:
+        initial_prompt = initial_medical_prompt
+    elif meeting_type == MeetingType.EXECUTIVE:
+        initial_prompt = initial_executive_prompt
+    else:
+        initial_prompt = initial_administrative_prompt
 
-    initial_prompt = (
-        "Ședință de consiliu medical și comitet director la spital. "
-        "Discutăm despre KPIs, budget, audit și SOP-uri pentru triaj conform noilor clinical guidelines. "
-        "Dr. Cebotari: Colegi, avem pe ordinea de zi situația din blocul chirurgical și secția ATI. "
-        "Елена: По антибиотикам резерва нужно срочно закрыть отчёт за прошлый квартал. "
-        "Revizuim graficul de gărzi, workflow-ul pacienților și achizițiile de consumabile."
-    )
-
-    initial_prompt = """
-Hospital medical meeting in Romanian, Russian and English.
-Medical terms: pacient, creatinina, uree, hemoglobina, noradrenalina,
-meropenem, amikacina, fluconazol, Klebsiella, Candida,
-insuficienta respiratorie, hipercapnie, oxigenare, BiPAP,
-pacemaker, transfuzie, cardiolog, oncolog, urolog, stentare,
-tratament, consult, monitorizare, decizie.
-Preserve medical terms, names, numbers, doses and percentages accurately.
-"""
 
 
     a = Path(audio_path)

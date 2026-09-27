@@ -1,7 +1,7 @@
 # app/schemas.py
 from enum import Enum
-from typing import List
-from pydantic import BaseModel
+from typing import List, Optional
+from pydantic import BaseModel, Field
 
 
 class MeetingType(str, Enum):
@@ -19,10 +19,17 @@ class JobStage(str, Enum):
     FAILED = "FAILED"
 
 
+# Medical specific record
 class PatientRecord(BaseModel):
     patient_id: int
     patient_summary: str
     patient_decision: str
+
+
+# Executive & Administrative specific record
+class DiscussionPoint(BaseModel):
+    point: str
+    decisions: List[str] = Field(default_factory=list)
 
 
 class MoMResult(BaseModel):
@@ -33,8 +40,14 @@ class MoMResult(BaseModel):
     total_processing_sec: float
     transcript_preview: str
     distribution_list: List[str]
-    summary: str
-    patients: List[PatientRecord]
+
+    # Populated for MEDICAL meetings
+    summary: Optional[str] = None
+    patients: Optional[List[PatientRecord]] = None
+
+    # Populated for EXECUTIVE and ADMINISTRATIVE meetings
+    title: Optional[str] = None
+    discussion_points: Optional[List[DiscussionPoint]] = None
 
 
 class JobCreationResponse(BaseModel):
