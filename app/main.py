@@ -1,3 +1,4 @@
+# app/main.py
 import os
 import shutil
 import tempfile
@@ -26,9 +27,9 @@ from app.schemas import (
 )
 
 app = FastAPI(
-    title="Secure MOM Pipeline",
-    description="Offline Meeting Transcription & Action Items Extraction",
-    version="0.3.0",
+    title="Secure Medical Documentation Pipeline",
+    description="Offline ASR & ICU/Medical Board Patient Cases Synthesis",
+    version="0.4.0",
 )
 
 # In-memory storage for jobs
@@ -38,19 +39,19 @@ JOBS_DB: Dict[str, dict] = {}
 async def run_pipeline(
     job_id: str, temp_path: str, filename: str, meeting_type: MeetingType
 ):
-    """Orchestrates ASR -> LLM -> MoM Compiler."""
+    """Orchestrates Whisper ASR -> Local LLM -> Simplified Patient MoM Compiler."""
     job = JOBS_DB[job_id]
     try:
         # Step 1: Voice2Text
         job["status"] = JobStage.TRANSCRIBING
         job["progress"] = 30
-        job["message"] = "Transcribing multilingual audio (Whisper)..."
+        job["message"] = "Transcrierea audio-ului clinic (Whisper)..."
         asr_output = await transcribe_audio(temp_path, meeting_type.value)
 
-        # Step 2: Text2Decisions
+        # Step 2: Text2Decisions (Patient Case Extraction)
         job["status"] = JobStage.EXTRACTING_DECISIONS
         job["progress"] = 75
-        job["message"] = "Extracting decisions and action items (Local LLM)..."
+        job["message"] = "Extragerea cazurilor clinice și deciziilor pe pacienți (Local LLM)..."
         llm_output = await extract_decisions_and_actions(
             asr_output["transcript"], meeting_type.value
         )
@@ -58,7 +59,7 @@ async def run_pipeline(
         # Step 3: MoM Creation
         job["status"] = JobStage.FORMATTING_MOM
         job["progress"] = 90
-        job["message"] = "Compiling Minutes of Meeting document..."
+        job["message"] = "Sintetizarea raportului pe pacienți..."
 
         elapsed = round(time.time() - job["start_time"], 2)
         final_mom = compile_mom_document(
@@ -72,7 +73,7 @@ async def run_pipeline(
 
         job["status"] = JobStage.COMPLETED
         job["progress"] = 100
-        job["message"] = "MoM processing finished successfully."
+        job["message"] = "Raport finalizat cu succes."
         job["result"] = final_mom
 
     except Exception as e:
@@ -101,7 +102,7 @@ async def submit_meeting(
     job_id = str(uuid.uuid4())
 
     # Save audio stream to temporary file
-    suffix = os.path.splitext(file.filename)[-1] or ".mp3"
+    suffix = os.path.splitext(file.filename or "")[-1] or ".mp3"
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         shutil.copyfileobj(file.file, tmp)
         temp_audio_path = tmp.name
@@ -111,18 +112,18 @@ async def submit_meeting(
         "status": JobStage.QUEUED,
         "progress": 5,
         "start_time": time.time(),
-        "message": "Job queued for execution",
+        "message": "Înregistrare în așteptare pentru procesare...",
         "result": None,
     }
 
     background_tasks.add_task(
-        run_pipeline, job_id, temp_audio_path, file.filename, meeting_type
+        run_pipeline, job_id, temp_audio_path, file.filename or "audio.mp3", meeting_type
     )
 
     return JobCreationResponse(
         job_id=job_id,
         status=JobStage.QUEUED,
-        message="Meeting audio accepted. Processing started.",
+        message="Înregistrare recepționată. Procesarea a început.",
     )
 
 
@@ -146,7 +147,7 @@ def get_status(job_id: str):
 
 @app.get("/api/v1/meetings/{job_id}/result", response_model=MoMResult)
 def get_result(job_id: str):
-    """3. ID -> returns final MoM with decisions and action items"""
+    """3. ID -> returns final MoM with patient summaries and decisions"""
     if job_id not in JOBS_DB:
         raise HTTPException(status_code=404, detail="Job not found")
 
@@ -158,7 +159,7 @@ def get_result(job_id: str):
     if job["status"] != JobStage.COMPLETED:
         raise HTTPException(
             status_code=status.HTTP_425_TOO_EARLY,
-            detail=f"Result not ready yet. Status: {job['status']} ({job['progress']}%)",
+            detail=f"Rezultatul nu este încă gata. Status: {job['status']} ({job['progress']}%)",
         )
 
     return job["result"]

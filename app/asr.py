@@ -53,6 +53,17 @@ def _sync_transcribe_audio(audio_path: str, meeting_type: str) -> dict:
         "Revizuim graficul de gărzi, workflow-ul pacienților și achizițiile de consumabile."
     )
 
+    initial_prompt = """
+Hospital medical meeting in Romanian, Russian and English.
+Medical terms: pacient, creatinina, uree, hemoglobina, noradrenalina,
+meropenem, amikacina, fluconazol, Klebsiella, Candida,
+insuficienta respiratorie, hipercapnie, oxigenare, BiPAP,
+pacemaker, transfuzie, cardiolog, oncolog, urolog, stentare,
+tratament, consult, monitorizare, decizie.
+Preserve medical terms, names, numbers, doses and percentages accurately.
+"""
+
+
     a = Path(audio_path)
     if not a.exists():
         print("PALUNDRA")
@@ -65,6 +76,7 @@ def _sync_transcribe_audio(audio_path: str, meeting_type: str) -> dict:
     )
 
     transcript = " ".join([seg.text for seg in segments])
+    # print(transcript)
 
 
     # 2. Release VRAM for the LLM

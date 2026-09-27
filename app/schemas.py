@@ -1,5 +1,6 @@
+# app/schemas.py
 from enum import Enum
-from typing import List, Optional
+from typing import List
 from pydantic import BaseModel
 
 
@@ -11,27 +12,17 @@ class MeetingType(str, Enum):
 
 class JobStage(str, Enum):
     QUEUED = "QUEUED"
-    TRANSCRIBING = "TRANSCRIBING"  # Voice2Text
-    EXTRACTING_DECISIONS = "EXTRACTING_DECISIONS"  # Text2MoM
-    FORMATTING_MOM = "FORMATTING_MOM"  # MoM synthesis
+    TRANSCRIBING = "TRANSCRIBING"
+    EXTRACTING_DECISIONS = "EXTRACTING_DECISIONS"
+    FORMATTING_MOM = "FORMATTING_MOM"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
 
 
-class ActionItem(BaseModel):
-    id: int
-    task: str
-    owner: str
-    owner_email: str
-    deadline: str
-    department: str
-    priority: str
-
-
-class Attendee(BaseModel):
-    name: str
-    email: str
-    role: str
+class PatientRecord(BaseModel):
+    patient_id: int
+    patient_summary: str
+    patient_decision: str
 
 
 class MoMResult(BaseModel):
@@ -40,13 +31,10 @@ class MoMResult(BaseModel):
     meeting_type: str
     filename: str
     total_processing_sec: float
-    summary: str
-    decisions_made: List[str]
-    action_items: List[ActionItem]
-    attendees: List[Attendee]
-    distribution_list: List[str]
     transcript_preview: str
-    email_body_markdown: str
+    distribution_list: List[str]
+    summary: str
+    patients: List[PatientRecord]
 
 
 class JobCreationResponse(BaseModel):
