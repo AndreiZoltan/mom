@@ -2,6 +2,10 @@
 import asyncio
 import gc
 import json
+import os
+from pathlib import Path
+from typing import Optional
+
 from app.config import LLM_MODEL_PATH, MOCK_MODE
 from app.prompts import (
     administrative_system_prompt,
@@ -9,6 +13,12 @@ from app.prompts import (
     medical_system_prompt,
 )
 from app.schemas import MeetingType
+
+# Optional config-based fallback for LoRA path
+try:
+    from app.config import LLM_LORA_PATH
+except ImportError:
+    LLM_LORA_PATH = os.getenv("LLM_LORA_PATH", None)
 
 
 def _clean_gpu():
@@ -67,18 +77,31 @@ def MOCK_DICT(meeting_type: str) -> dict:
         }
 
 
-def _sync_extract_decisions_and_actions(transcript: str, meeting_type: str) -> dict:
+def _sync_extract_decisions_and_actions(
+    transcript: str, meeting_type: str, lora_path: Optional[str] = None
+) -> dict:
     if MOCK_MODE:
         return MOCK_DICT(meeting_type)
 
     from llama_cpp import Llama
 
-    llm = Llama(
-        model_path=LLM_MODEL_PATH,
-        n_gpu_layers=28,
-        n_ctx=8192,
-        verbose=False,
-    )
+    # Determine whether to apply LoRA
+    active_lora = lora_path or LLM_LORA_PATH
+    llama_kwargs = {
+        "model_path": LLM_MODEL_PATH,
+        "n_gpu_layers": 28,
+        "n_ctx": 8192,
+        "verbose": False,
+    }
+
+    if active_lora and Path(active_lora).exists():
+        print(f"[LLM] Loading base model with LoRA adapter from: {active_lora}")
+        llama_kwargs["lora_path"] = str(active_lora)
+        llama_kwargs["lora_scale"] = 1.0
+    else:
+        print("[LLM] Running base model without LoRA.")
+
+    llm = Llama(**llama_kwargs)
 
     if meeting_type == MeetingType.MEDICAL.value:
         system_prompt = medical_system_prompt
@@ -109,10 +132,6 @@ def _sync_extract_decisions_and_actions(transcript: str, meeting_type: str) -> d
         raw_content = raw_content[:-3]
     raw_content = raw_content.strip()
 
-    # try:
-        # result = json.loads(raw_content)
-    # except json.JSONDecodeError:
-        # result = MOCK_DICT(meeting_type)
     result = json.loads(raw_content)
 
     # Set appropriate default keys depending on meeting type
@@ -128,7 +147,9 @@ def _sync_extract_decisions_and_actions(transcript: str, meeting_type: str) -> d
     return result
 
 
-async def extract_decisions_and_actions(transcript: str, meeting_type: str) -> dict:
+async def extract_decisions_and_actions(
+    transcript: str, meeting_type: str, lora_path: Optional[str] = None
+) -> dict:
     return await asyncio.to_thread(
-        _sync_extract_decisions_and_actions, transcript, meeting_type
+        _sync_extract_decisions_and_actions, transcript, meeting_type, lora_path
     )
