@@ -109,10 +109,11 @@ def _sync_extract_decisions_and_actions(transcript: str, meeting_type: str) -> d
         raw_content = raw_content[:-3]
     raw_content = raw_content.strip()
 
-    try:
-        result = json.loads(raw_content)
-    except json.JSONDecodeError:
-        result = MOCK_DICT(meeting_type)
+    # try:
+        # result = json.loads(raw_content)
+    # except json.JSONDecodeError:
+        # result = MOCK_DICT(meeting_type)
+    result = json.loads(raw_content)
 
     # Set appropriate default keys depending on meeting type
     if meeting_type == MeetingType.MEDICAL.value:
