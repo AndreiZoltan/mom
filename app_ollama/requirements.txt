@@ -1,0 +1,12 @@
+fastapi>=0.110.0
+uvicorn[standard]>=0.28.0
+python-multipart>=0.0.9
+pydantic>=2.7.0
+python-dotenv>=1.0.0
+numpy>=1.26.4,<2.0.0
+
+# Audio Transcription
+faster-whisper>=1.0.3
+
+# LLM Client (Ollama replaces llama-cpp-python)
+ollama>=0.3.0
