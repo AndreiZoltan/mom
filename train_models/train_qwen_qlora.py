@@ -3,7 +3,7 @@ train_qwen_qlora.py
 Continued Domain Adaptation / Fine-Tuning of Qwen with 4-bit QLoRA
 directly from a folder containing PDF files (USMF medical textbooks & protocols).
 
-Hardware footprint: ~4.5 GB - 5.5 GB VRAM (fits on 6 GB GTX GPU).
+Hardware footprint: ~4.5 GB - 5.5 GB VRAM (fits on 6 GB GTX / RTX 2080 Ti).
 """
 
 import os
@@ -15,6 +15,7 @@ from pypdf import PdfReader
 import torch
 from datasets import Dataset
 from transformers import (
+    AutoConfig,
     AutoModelForCausalLM,
     AutoTokenizer,
     BitsAndBytesConfig,
@@ -31,11 +32,8 @@ OUTPUT_DIR = "./qwen-medical-domain-lora"
 
 def clean_medical_text(text: str) -> str:
     """Cleans extracted PDF text from artifacts, hyphens, and multi-spaces."""
-    # Join hyphenated split words at line breaks (e.g., "hiper- \n tensiv" -> "hipertensiv")
     text = re.sub(r"(\w+)-\s*\n\s*(\w+)", r"\1\2", text)
-    # Replace multiple newlines and tab spaces with a single space
     text = re.sub(r"[\r\n\t]+", " ", text)
-    # Remove repeated whitespace
     text = re.sub(r"\s{2,}", " ", text)
     return text.strip()
 
@@ -43,10 +41,7 @@ def clean_medical_text(text: str) -> str:
 def extract_chunks_from_pdf_dir(
     pdf_dir: str, chunk_size: int = 1500, overlap: int = 150
 ) -> List[str]:
-    """
-    Reads all PDF files in the target directory, extracts page text,
-    and slices the accumulated content into overlapping token/character chunks.
-    """
+    """Reads all PDF files, cleans text, and splits into overlapping passages."""
     if not os.path.exists(pdf_dir):
         os.makedirs(pdf_dir, exist_ok=True)
         print(f"[!] Created directory '{pdf_dir}'. Please drop your USMF PDF files here.")
@@ -65,16 +60,14 @@ def extract_chunks_from_pdf_dir(
         try:
             reader = PdfReader(full_path)
             doc_text = ""
-            for i, page in enumerate(reader.pages):
+            for page in reader.pages:
                 page_text = page.extract_text()
                 if page_text:
                     doc_text += " " + clean_medical_text(page_text)
 
-            # Slice document into overlapping text windows
             step = chunk_size - overlap
             for start in range(0, len(doc_text), step):
                 chunk = doc_text[start : start + chunk_size]
-                # Keep chunks with meaningful substance
                 if len(chunk.strip()) > 300:
                     all_chunks.append(chunk.strip())
 
@@ -116,7 +109,10 @@ def main():
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    # 3. 4-bit NormalFloat (NF4) Quantization Config
+    # 3. Model Configuration (Hard-override default bfloat16 to float16)
+    config = AutoConfig.from_pretrained(MODEL_NAME, trust_remote_code=True)
+    config.torch_dtype = torch.float16
+
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=True,
         bnb_4bit_quant_type="nf4",
@@ -127,16 +123,18 @@ def main():
     print(f"Loading Model {MODEL_NAME} in 4-bit...")
     model = AutoModelForCausalLM.from_pretrained(
         MODEL_NAME,
+        config=config,
         quantization_config=bnb_config,
         device_map="auto",
+        torch_dtype=torch.float16,
         trust_remote_code=True,
     )
 
     # 4. Prepare for Low-VRAM QLoRA
-    model = prepare_model_for_kbit_training(model)
-    model.gradient_checkpointing_enable()
+    model = prepare_model_for_kbit_training(
+        model, use_gradient_checkpointing=True
+    )
 
-    # Target all linear projection layers of Qwen's attention and MLP
     peft_config = LoraConfig(
         r=16,
         lora_alpha=32,
@@ -155,22 +153,29 @@ def main():
     )
 
     model = get_peft_model(model, peft_config)
+
+    # Enforce pure float16 on trainable weights
+    for name, param in model.named_parameters():
+        if param.requires_grad:
+            param.data = param.data.to(torch.float16)
+
     model.print_trainable_parameters()
 
-    # 5. Training Configuration (Tuned for low memory / 6 GB GTX)
+    # 5. Training Configuration
+    # Disable fp16 and bf16 in Trainer to eliminate GradScaler conflicts on Turing GPUs
     training_args = TrainingArguments(
         output_dir=OUTPUT_DIR,
-        per_device_train_batch_size=1,        # 1 sample at a time
-        gradient_accumulation_steps=8,       # Effective batch size = 8
+        per_device_train_batch_size=1,
+        gradient_accumulation_steps=8,
         learning_rate=2e-4,
-        warmup_ratio=0.03,
         max_steps=args.max_steps,
         logging_steps=10,
-        fp16=True,
+        fp16=False,
+        bf16=False,
         save_strategy="steps",
         save_steps=100,
         save_total_limit=2,
-        optim="paged_adamw_8bit",             # Offloads optimizer states dynamically
+        optim="paged_adamw_8bit",
         report_to="none",
     )
 
@@ -178,10 +183,6 @@ def main():
     trainer = SFTTrainer(
         model=model,
         train_dataset=dataset,
-        peft_config=peft_config,
-        dataset_text_field="text",
-        max_seq_length=1024,
-        tokenizer=tokenizer,
         args=training_args,
     )
 

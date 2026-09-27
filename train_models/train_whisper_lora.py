@@ -58,18 +58,32 @@ class DataCollatorSpeechSeq2SeqWithPadding:
         batch["labels"] = labels
         return batch
 
+import soundfile as sf
+import librosa
 
 def prepare_dataset(batch, feature_extractor, tokenizer):
-    audio = batch["audio"]
-    # Compute 80-channel log-Mel spectrogram from audio array (16 kHz mono)
+    # batch["audio"] is simply the string file path
+    audio_path = batch["audio"]
+    
+    # Read audio with soundfile (rock-solid, no torchcodec needed)
+    speech_array, sampling_rate = sf.read(audio_path, dtype="float32")
+    
+    # Convert stereo to mono if needed
+    if speech_array.ndim > 1:
+        speech_array = speech_array.mean(axis=1)
+        
+    # Resample to 16 kHz if not already 16 kHz
+    if sampling_rate != 16000:
+        speech_array = librosa.resample(speech_array, orig_sr=sampling_rate, target_sr=16000)
+
+    # Compute log-Mel spectrogram
     batch["input_features"] = feature_extractor(
-        audio["array"], sampling_rate=audio["sampling_rate"]
+        speech_array, sampling_rate=16000
     ).input_features[0]
 
-    # Encode label text
+    # Tokenize target sentence
     batch["labels"] = tokenizer(batch["sentence"]).input_ids
     return batch
-
 
 def main():
     print(f"Loading processor for {MODEL_NAME}...")
