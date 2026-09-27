@@ -1,10 +1,12 @@
 # app/main.py
 import os
+from pathlib import Path
 import shutil
 import tempfile
 import time
 import uuid
 from typing import Dict
+
 from fastapi import (
     BackgroundTasks,
     FastAPI,
@@ -14,6 +16,8 @@ from fastapi import (
     UploadFile,
     status,
 )
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.asr import transcribe_audio
 from app.llm import extract_decisions_and_actions
@@ -30,6 +34,17 @@ app = FastAPI(
     title="Secure Medical Documentation Pipeline",
     description="Offline ASR & ICU/Medical Board Patient Cases Synthesis",
     version="0.4.0",
+)
+
+# ---------------------------------------------------------------------------
+# 1. Enable CORS (Crucial if frontend runs on a separate port like 3000/5173)
+# ---------------------------------------------------------------------------
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # In production, replace with specific origins e.g. ["http://localhost:3000"]
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # In-memory storage for jobs
@@ -165,10 +180,17 @@ def get_result(job_id: str):
     return job["result"]
 
 
+# ---------------------------------------------------------------------------
+# 2. Mount Frontend Static Files (MUST be placed after /api routes)
+# ---------------------------------------------------------------------------
+STATIC_DIR = Path(__file__).resolve().parent / "static"  # or Path("static") / Path("frontend/dist")
+
+if STATIC_DIR.exists():
+    # html=True automatically serves index.html at '/'
+    app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")
+
+
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("app.main:app", host="127.0.0.1", port=8002, 
-                # reload=True,
-                reload=False
-                )
+    uvicorn.run("app.main:app", host="127.0.0.1", port=8002, reload=False)
